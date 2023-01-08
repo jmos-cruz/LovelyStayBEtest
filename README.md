@@ -11,7 +11,7 @@ The first choice will prompt you with a GitHub username to store in a PostgreSQL
 
 The second choice will print all users stored in the database (not yet implemented).
 
-The third choice selects users based on location or programming languages used by a GitHub user, depending on your option.
+The third choice selects users based on location or programming languages used by a GitHub user, depending on your option. (not yet implemented)
 
 The fourth choice quits the program.
 
