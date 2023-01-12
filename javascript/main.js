@@ -32,88 +32,133 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-//Utilitary file containing only messages
+//Utilitarys files containing only messages
 //for the command-line
+//and a type
 const messages = __importStar(require("./messages"));
-//Data access object file with database access functions
-const dao = __importStar(require("./dataaccess"));
-//Interface file with user prompts
-const userGui = __importStar(require("./interface"));
+//UI file with user prompts
+const userGui = __importStar(require("./userInterface"));
+//Controller file to connect with database
+const controller = __importStar(require("./controller"));
 /*
 The main function of the application
 Functions as both the command-line interface and
 the app controller
 */
 let main = () => __awaiter(void 0, void 0, void 0, function* () {
-    let option = yield userGui.getUserNumber(messages.MENU);
+    let option = yield userGui.getUserNumber(messages.MAINMENU);
     switch (option) {
         //Prompts the user for a GitHub username
         //and stores it in the database, if found
         case 1:
-            let username = yield userGui.getUserText(messages.USERNAMEQUERY);
-            let user = yield fetchUser(username);
+            const format = /[!@#$%^&*()_+\=\[\]{};':"\\|,.<>\/?]+/;
+            let username;
+            username = yield userGui.getUserText(messages.QUERYUSER);
+            //Checks if the username has any special characters
+            if (format.test(username)) {
+                console.log('\n' + messages.SPECIALCHARS + '\n');
+                break;
+            }
+            //Checks if the user already exists in the database
+            if (yield controller.checkIfUserInDb(username)) {
+                console.log(messages.USERALREADYEXISTS);
+                break;
+            }
+            let user = yield controller.fetchUserFromApi(username);
+            //Checks if user exists on Github
             if (user.id === -1) {
                 console.log(messages.USERNOTFOUND);
                 break;
             }
-            //Have to return a value here to check if an error occurred
-            yield dao.insertUser(user);
+            controller.insertUserInDb(user);
+            userGui.printUser(user);
             break;
         //Returns all stored users
         case 2:
-            console.log(yield dao.getAllUsers());
+            let allStoredUsers;
+            allStoredUsers = yield controller.getAllUsersFromDb();
+            organizeStoredUsers(allStoredUsers)
+                .forEach(user => userGui.printUser(user));
             break;
-        //Returns a list of users by location or programming language
+        //Prompts user to fetch users by location or by programming language
         case 3:
-            let locations = yield dao.getAllLocations();
-            let locationOptions = locations.filter((item, pos) => {
-                return locations.indexOf(item) == pos;
-            });
-            locationOptions = locationOptions.map(string => string == null ? 'null' : string);
-            let queryOption = yield userGui.getUserNumber(locationOptions);
-            let locationSelected = locationOptions[queryOption - 1];
-            if (locationSelected) {
-                console.log(yield dao.getUsersByLocation(locationSelected));
-            }
-            else {
-                console.log(messages.OPTIONERROR);
+            let queryOption;
+            queryOption = yield userGui.getUserNumber(messages.QUERYOPTIONS);
+            switch (queryOption) {
+                case 1:
+                    let locations;
+                    locations = yield controller.getAllLocationsFromDb();
+                    let queryLctnOption;
+                    queryLctnOption = yield userGui.getUserNumber(locations);
+                    let lctn = locations[queryLctnOption - 1];
+                    //Returns to main menu if option is either
+                    //NaN or not valid
+                    if (!lctn) {
+                        console.log(messages.OPTIONERROR);
+                        break;
+                    }
+                    let queriedUsersLctn;
+                    queriedUsersLctn = yield controller.queryUsersByLctn(lctn);
+                    organizeStoredUsers(queriedUsersLctn).
+                        forEach(user => userGui.printUser(user));
+                    break;
+                case 2:
+                    let languages;
+                    languages = yield controller.getAllLanguagesFromDb();
+                    let queryLanguageOption;
+                    queryLanguageOption = yield userGui.getUserNumber(languages);
+                    let language = languages[queryLanguageOption - 1];
+                    if (!language) {
+                        console.log(messages.OPTIONERROR);
+                        break;
+                    }
+                    let queriedUsersLang;
+                    queriedUsersLang = yield controller.queryUsersByLang(language);
+                    console.log(queriedUsersLang);
+                    queriedUsersLang.forEach(userArr => {
+                        organizeStoredUsers(userArr).
+                            forEach(user => userGui.printUser(user));
+                    });
+                    break;
+                default:
+                    console.log(messages.OPTIONERROR);
             }
             break;
         //Quits the application
         case 4:
             console.log(messages.GOODBYE);
-            userGui.r1.close();
-            dao.pgp.end();
+            controller.close();
             return;
         //In case option typed is either NaN or non-existing
         default:
             console.log(messages.OPTIONERROR);
-            break;
     }
-    //Recursive call to main function
+    //Recursive call
     main();
 });
-//Fetches a GitHub user from the GitHub API
-let fetchUser = (username) => __awaiter(void 0, void 0, void 0, function* () {
-    const response = yield fetch(messages.GITHUBAPI + username);
-    const fetchedUser = yield response.json();
-    //Fetching a non-existing user returns an object with
-    //a message property, which is not present
-    //in an existing user object
-    if (fetchedUser.message) {
-        return {
-            id: -1,
-            login: '',
-            name: null,
-            location: null
-        };
-    }
-    return {
-        id: fetchedUser.id,
-        login: fetchedUser.login,
-        name: fetchedUser.name,
-        location: fetchedUser.location
-    };
-});
+let organizeStoredUsers = (users) => {
+    let distinctUsers = new Array;
+    users.forEach(user => {
+        let userExists;
+        userExists = distinctUsers.filter(newUser => newUser.username === user.username);
+        if (!userExists[0]) {
+            distinctUsers.push({
+                id: user.id,
+                username: user.username,
+                fullname: user.fullname,
+                location: user.location,
+                languages: [user.programming_language]
+            });
+        }
+        else {
+            distinctUsers.map(newUser => {
+                if (newUser.username === user.username) {
+                    newUser.languages.push(user.programming_language);
+                }
+            });
+        }
+    });
+    return distinctUsers;
+};
 //The entry point of the application
 main();
